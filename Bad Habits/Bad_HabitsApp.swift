@@ -10,6 +10,9 @@ import SwiftData
 
 @main
 struct Bad_HabitsApp: App {
+    init() {
+        UIView.appearance().overrideUserInterfaceStyle = .light
+    }
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,

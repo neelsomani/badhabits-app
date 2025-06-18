@@ -2,64 +2,456 @@ import SwiftUI
 
 struct HabitEntriesView: View {
     @EnvironmentObject private var viewModel: HabitViewModel
-    @State private var showingAddEntry = false
     @State private var showingAddColumn = false
     @State private var showingAddCategory = false
     @State private var showingSettings = false
     @State private var entryToEdit: HabitEntry?
-    
+    @Namespace private var scrollNamespace // For scrolling
+    @State private var isPanelMinimized = false
+    @State private var currentWeekStart: Date = Calendar.current.startOfWeek(for: Date())
+
     var body: some View {
         NavigationView {
-            List {
-                ForEach(viewModel.entries.sorted(by: { $0.date > $1.date })) { entry in
-                    HabitEntryRow(entry: entry)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            entryToEdit = entry
+            ZStack {
+                Color.grayLightBg.ignoresSafeArea()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Inline Edit Entry Panel
+                            if let entry = entryToEdit {
+                                InlineEditEntryPanel(
+                                    entry: entry,
+                                    onSave: { updatedEntry in
+                                        viewModel.updateEntry(updatedEntry)
+                                        entryToEdit = nil
+                                    },
+                                    onCancel: {
+                                        entryToEdit = nil
+                                    },
+                                    isMinimized: $isPanelMinimized
+                                )
+                                .id("editEntryPanel")
+                            } else {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    AddEntryPanel(isMinimized: $isPanelMinimized)
+                                        .environmentObject(viewModel)
+                                }
+                            }
+                            // Recent Entries
+                            VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Entries")
+                                        .font(.title)
+                                        .bold()
+                                        .foregroundColor(.grayPrimary)
+                                    Text(weekRangeString(for: currentWeekStart))
+                                        .font(.subheadline)
+                                        .foregroundColor(.graySecondary)
+                                }
+                                if entriesForCurrentWeek.isEmpty {
+                                    HStack {
+                                        Spacer()
+                                        Text("No entries for this week!")
+                                            .foregroundColor(Color.graySecondary)
+                                            .font(.headline)
+                                            .padding(.vertical, 32)
+                                        Spacer()
+                                    }
+                                } else {
+                                    ForEach(entriesForCurrentWeek) { entry in
+                                        ModernHabitEntryCard(entry: entry) {
+                                            entryToEdit = entry
+                                        } onDelete: {
+                                            viewModel.deleteEntry(entry)
+                                        }
+                                    }
+                                }
+                                // Navigation buttons at the bottom
+                                HStack(spacing: 32) {
+                                    Button(action: {
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                        let prev = previousWeek(from: currentWeekStart)
+                                        if prev >= earliestWeekStart {
+                                            currentWeekStart = prev
+                                        }
+                                    }) {
+                                        Image(systemName: "chevron.left")
+                                            .font(.title2)
+                                            .foregroundColor({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                                return currentWeekStart > earliestWeekStart ? .primaryBlue : .grayTertiary
+                                            }())
+                                            .frame(width: 48, height: 48)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                                return currentWeekStart > earliestWeekStart ? Color.primaryBlue : Color.grayBorder
+                                            }(), lineWidth: 2))
+                                    }
+                                    .disabled({
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                        return currentWeekStart <= earliestWeekStart
+                                    }())
+                                    Button(action: {
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let latestWeekStart = calendar.startOfWeek(for: today)
+                                        let next = nextWeek(from: currentWeekStart)
+                                        if next <= latestWeekStart {
+                                            currentWeekStart = next
+                                        }
+                                    }) {
+                                        Image(systemName: "chevron.right")
+                                            .font(.title2)
+                                            .foregroundColor({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let latestWeekStart = calendar.startOfWeek(for: today)
+                                                return currentWeekStart < latestWeekStart ? .primaryBlue : .grayTertiary
+                                            }())
+                                            .frame(width: 48, height: 48)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let latestWeekStart = calendar.startOfWeek(for: today)
+                                                return currentWeekStart < latestWeekStart ? Color.primaryBlue : Color.grayBorder
+                                            }(), lineWidth: 2))
+                                    }
+                                    .disabled({
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let latestWeekStart = calendar.startOfWeek(for: today)
+                                        return currentWeekStart >= latestWeekStart
+                                    }())
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 16)
+                                .padding(.bottom, 4)
+                                .alignmentGuide(.bottom) { d in d[.bottom] }
+                            }
+                            .padding(24)
+                            .background(Color.white)
+                            .cornerRadius(16)
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                            .padding(.horizontal)
+                            Spacer(minLength: 24)
                         }
-                }
-                .onDelete(perform: deleteEntries)
-            }
-            .navigationTitle(viewModel.habitName.isEmpty ? "Habit Entries" : "Your Habit: \(viewModel.habitName)")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showingSettings = true }) {
-                        Image(systemName: "gear")
+                    }
+                    .onChange(of: entryToEdit) { newValue in
+                        if newValue != nil {
+                            isPanelMinimized = false
+                            withAnimation {
+                                proxy.scrollTo("editEntryPanel", anchor: .top)
+                            }
+                        }
                     }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingAddEntry = true }) {
-                        Image(systemName: "plus")
-                    }
+                .onAppear {
+                    // Start maximized if no entries, otherwise minimized
+                    isPanelMinimized = !viewModel.entries.isEmpty
                 }
-            }
-            .sheet(isPresented: $showingAddEntry) {
-                AddEntryView()
-            }
-            .sheet(isPresented: $showingSettings) {
-                SettingsView(showingAddColumn: $showingAddColumn, showingAddCategory: $showingAddCategory)
-            }
-            .sheet(isPresented: $showingAddColumn) {
-                AddColumnView()
-            }
-            .sheet(isPresented: $showingAddCategory) {
-                AddCategoryView()
-            }
-            .sheet(item: $entryToEdit) { entry in
-                EditEntryView(entry: entry)
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView(showingAddColumn: $showingAddColumn, showingAddCategory: $showingAddCategory)
+                }
+                .sheet(isPresented: $showingAddColumn) {
+                    AddColumnView()
+                }
+                .sheet(isPresented: $showingAddCategory) {
+                    AddCategoryView()
+                }
             }
         }
     }
-    
-    private func deleteEntries(at offsets: IndexSet) {
-        let sortedEntries = viewModel.entries.sorted(by: { $0.date > $1.date })
-        offsets.forEach { index in
-            if let entryToDelete = viewModel.entries.first(where: { $0.id == sortedEntries[index].id }) {
-                viewModel.deleteEntry(entryToDelete)
-            }
-        }
+
+    // Helper to get all week start dates from entries
+    private var allWeekStartDates: [Date] {
+        let calendar = Calendar.current
+        let weekStarts = Set(viewModel.entries.map { calendar.startOfWeek(for: $0.date) })
+        return weekStarts.sorted(by: >)
+    }
+
+    // Helper to get entries for the current week
+    private var entriesForCurrentWeek: [HabitEntry] {
+        let calendar = Calendar.current
+        let weekStart = currentWeekStart
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart)!
+        return viewModel.entries.filter { $0.date >= weekStart && $0.date < weekEnd }
+            .sorted(by: { $0.date > $1.date })
+    }
+
+    // Helper to format week range
+    private func weekRangeString(for weekStart: Date) -> String {
+        let calendar = Calendar.current
+        let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/dd"
+        return "Week of \(formatter.string(from: weekStart))–\(formatter.string(from: weekEnd))"
+    }
+
+    // Helper to get next/previous week
+    func previousWeek(from date: Date) -> Date {
+        let calendar = Calendar.current
+        return calendar.date(byAdding: .day, value: -7, to: date) ?? date
+    }
+    func nextWeek(from date: Date) -> Date {
+        let calendar = Calendar.current
+        return calendar.date(byAdding: .day, value: 7, to: date) ?? date
     }
 }
+
+// AddEntryPanel is a copy of AddEntryView but as an inline panel, not a modal
+struct AddEntryPanel: View {
+    @EnvironmentObject private var viewModel: HabitViewModel
+    @State private var category: HabitCategory? = nil
+    @State private var notes = ""
+    @State private var customFields: [String: CustomFieldValue] = [:]
+    @State private var date = Date()
+    @State private var showingDatePicker = false
+    @Binding var isMinimized: Bool
+    @State private var showReasonError = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Text("Add entry")
+                    .font(.title)
+                    .bold()
+                Spacer()
+                Image(systemName: isMinimized ? "chevron.down" : "chevron.up")
+                    .foregroundColor(.grayTertiary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isMinimized.toggle()
+            }
+            if !isMinimized {
+                // Reason Picker (with error highlight)
+                Menu {
+                    ForEach(viewModel.categories) { cat in
+                        Button(cat.name.capitalized) { category = cat; showReasonError = false }
+                    }
+                } label: {
+                    HStack {
+                        Text(category?.name.capitalized ?? "Select reason")
+                            .foregroundColor(category == nil ? .grayTertiary : .grayPrimary)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .foregroundColor(.grayTertiary)
+                    }
+                    .padding()
+                    .frame(height: 44)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(showReasonError ? Color.errorRed : Color.grayBorder, lineWidth: 1.5))
+                }
+                if showReasonError {
+                    Text("Please select a reason.")
+                        .font(.caption)
+                        .foregroundColor(.errorRed)
+                        .padding(.leading, 4)
+                }
+                // Date & Time
+                HStack(spacing: 16) {
+                    Button(action: { showingDatePicker = true }) {
+                        HStack {
+                            Text(date, formatter: dateTimeFormatter)
+                                .foregroundColor(.grayPrimary)
+                            Spacer()
+                            Image(systemName: "calendar")
+                                .foregroundColor(.grayTertiary)
+                        }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+                    }
+                }
+                .sheet(isPresented: $showingDatePicker) {
+                    VStack {
+                        DatePicker("Select Date & Time", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(GraphicalDatePickerStyle())
+                            .labelsHidden()
+                        Button("Done") { showingDatePicker = false }
+                            .padding()
+                    }
+                    .presentationDetents([.medium])
+                }
+                // Notes (with placeholder)
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $notes)
+                        .frame(height: 80)
+                        .padding(8)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+                        .foregroundColor(.grayPrimary)
+                    if notes.isEmpty {
+                        Text("Add additional notes")
+                            .foregroundColor(.grayTertiary)
+                            .font(.body)
+                            .padding(.leading, 14)
+                            .padding(.top, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                // Custom Fields
+                if !viewModel.customColumns.isEmpty {
+                    ForEach(viewModel.customColumns) { column in
+                        CustomFieldInput(
+                            column: column,
+                            value: Binding(
+                                get: { customFields[column.name] ?? .string("") },
+                                set: { customFields[column.name] = $0 }
+                            )
+                        )
+                        .modifier(CustomFieldStyle())
+                    }
+                }
+                // Add Entry Button
+                Button(action: {
+                    if category == nil {
+                        showReasonError = true
+                        return
+                    }
+                    let entry = HabitEntry(
+                        date: date,
+                        category: category!,
+                        notes: notes,
+                        customFields: customFields
+                    )
+                    viewModel.addEntry(entry)
+                    // Reset fields
+                    notes = ""
+                    customFields = [:]
+                    date = Date()
+                    category = nil
+                    showReasonError = false
+                }) {
+                    HStack {
+                        Image(systemName: "plus")
+                        Text("Add Entry")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.primaryBlue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .padding(24)
+        .background(Color.grayCardBg)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+        .padding(.horizontal)
+    }
+}
+
+struct ModernHabitEntryCard: View {
+    let entry: HabitEntry
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
+    var body: some View {
+        HStack(alignment: .center, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.category.name.capitalized)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.primaryBlue)
+                    .padding(.bottom, 2)
+                Text("\(entry.date, formatter: isoDateTimeFormatter)")
+                    .font(.system(size: 15))
+                    .foregroundColor(.graySecondary)
+                if !entry.notes.isEmpty {
+                    Text(entry.notes)
+                        .font(.system(size: 15))
+                        .foregroundColor(.grayPrimary)
+                        .padding(.top, 2)
+                }
+                if !entry.customFields.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(entry.customFields.keys.sorted()), id: \.self) { key in
+                            if let value = entry.customFields[key] {
+                                HStack(spacing: 4) {
+                                    Text(key + ":")
+                                        .font(.caption)
+                                        .foregroundColor(.graySecondary)
+                                    Text(value.stringValue)
+                                        .font(.caption)
+                                        .foregroundColor(.grayPrimary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            Spacer()
+            HStack(spacing: 12) {
+                Button(action: { onEdit?() }) {
+                    Image(systemName: "pencil")
+                        .foregroundColor(.grayTertiary)
+                        .font(.system(size: 18, weight: .medium))
+                }
+                Button(action: { onDelete?() }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.errorRed)
+                        .font(.system(size: 18, weight: .medium))
+                }
+            }
+        }
+        .padding(20)
+        .background(Color.grayCardBg)
+        .cornerRadius(16)
+        .shadow(color: Color.gray.opacity(0.08), radius: 8, x: 0, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+        .padding(.vertical, 6)
+    }
+}
+
+private let dateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    return formatter
+}()
+
+private let timeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.timeStyle = .short
+    return formatter
+}()
+
+private let modernDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .long
+    return formatter
+}()
+
+private let dateTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .long
+    formatter.timeStyle = .short
+    return formatter
+}()
+
+private let isoDateTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd 'at' h:mm a"
+    formatter.locale = Locale.current
+    return formatter
+}()
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -89,12 +481,16 @@ struct SettingsView: View {
                         showingAddCategory = true
                     }) {
                         Label("Manage Categories", systemImage: "tag")
+                            .foregroundColor(Color.grayTertiary)
+                            .font(.system(size: 20))
                     }
                     
                     Button(action: { 
                         showingAddColumn = true
                     }) {
                         Label("Manage Custom Columns", systemImage: "plus.rectangle.on.rectangle")
+                            .foregroundColor(Color.grayTertiary)
+                            .font(.system(size: 20))
                     }
                 }
             }
@@ -111,12 +507,12 @@ struct HabitEntryRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(entry.date, style: .date)
-                    .font(.subheadline)
+                    .font(.system(.body, design: .default))
                 Text(entry.date, style: .time)
-                    .font(.subheadline)
+                    .font(.system(.body, design: .default))
                 Spacer()
-                Text(entry.category.name)
-                    .font(.caption)
+                Text(entry.category.name.capitalized)
+                    .font(.system(.caption, design: .default))
                     .padding(4)
                     .background(categoryColor(for: entry.category))
                     .cornerRadius(4)
@@ -124,22 +520,26 @@ struct HabitEntryRow: View {
             
             if !entry.notes.isEmpty {
                 Text(entry.notes)
-                    .font(.body)
+                    .font(.system(.body, design: .default))
             }
             
             ForEach(Array(entry.customFields.keys.sorted()), id: \.self) { key in
                 if let value = entry.customFields[key] {
                     HStack {
                         Text(key)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .font(.system(.caption, design: .default))
+                            .foregroundColor(.graySecondary)
                         Text(value.stringValue)
-                            .font(.caption)
+                            .font(.system(.caption, design: .default))
                     }
                 }
             }
         }
         .padding(.vertical, 4)
+        .background(Color.grayCardBg)
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.grayBorder))
+        .padding(4)
     }
     
     private func categoryColor(for category: HabitCategory) -> Color {
@@ -147,91 +547,12 @@ struct HabitEntryRow: View {
             return .purple.opacity(0.2)
         }
         switch category.name {
-        case "RELAX": return .blue.opacity(0.2)
-        case "REWARD": return .green.opacity(0.2)
-        case "FOCUS": return .purple.opacity(0.2)
-        case "HUMAN NEED": return .orange.opacity(0.2)
+        case "Relax": return .blue.opacity(0.2)
+        case "Reward": return .green.opacity(0.2)
+        case "Focus": return .purple.opacity(0.2)
+        case "Fun": return .orange.opacity(0.2)
+        case "Human Need": return .orange.opacity(0.2)
         default: return .gray.opacity(0.2)
-        }
-    }
-}
-
-struct AddEntryView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var viewModel: HabitViewModel
-    
-    @State private var category: HabitCategory
-    @State private var notes = ""
-    @State private var customFields: [String: CustomFieldValue] = [:]
-    @State private var date = Date()
-    @State private var showingDatePicker = false
-    
-    init() {
-        _category = State(initialValue: HabitCategory.defaultCategories[0])
-    }
-    
-    var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Date & Time")) {
-                    HStack {
-                        Text(date, style: .date)
-                        Spacer()
-                        Text(date, style: .time)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showingDatePicker.toggle()
-                    }
-                    
-                    if showingDatePicker {
-                        DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                            .datePickerStyle(.graphical)
-                            .onChange(of: date) { _ in
-                                showingDatePicker = false
-                            }
-                    }
-                }
-                
-                Section(header: Text("Category")) {
-                    Picker("Category", selection: $category) {
-                        ForEach(viewModel.categories) { category in
-                            Text(category.name).tag(category)
-                        }
-                    }
-                }
-                
-                Section(header: Text("Notes")) {
-                    TextEditor(text: $notes)
-                        .frame(height: 100)
-                }
-                
-                Section(header: Text("Custom Fields")) {
-                    ForEach(viewModel.customColumns) { column in
-                        CustomFieldInput(
-                            column: column,
-                            value: Binding(
-                                get: { customFields[column.name] ?? .string("") },
-                                set: { customFields[column.name] = $0 }
-                            )
-                        )
-                    }
-                }
-            }
-            .navigationTitle("New Entry")
-            .navigationBarItems(
-                leading: Button("Cancel") { dismiss() },
-                trailing: Button("Save") {
-                    let entry = HabitEntry(
-                        date: date,
-                        category: category,
-                        notes: notes,
-                        customFields: customFields
-                    )
-                    viewModel.addEntry(entry)
-                    dismiss()
-                }
-            )
         }
     }
 }
@@ -257,7 +578,7 @@ struct AddCategoryView: View {
                                 Spacer()
                                 Button(action: { viewModel.deleteCategory(category) }) {
                                     Image(systemName: "trash")
-                                        .foregroundColor(.red)
+                                        .foregroundColor(Color.errorRed)
                                 }
                             }
                         }
@@ -284,25 +605,37 @@ struct CustomFieldInput: View {
     var body: some View {
         switch column.type {
         case .string:
-            TextField(column.name, text: Binding(
-                get: {
-                    if case .string(let str) = value {
-                        return str
-                    }
-                    return ""
-                },
-                set: { value = .string($0) }
-            ))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(column.name)
+                    .font(.caption)
+                    .foregroundColor(.graySecondary)
+                TextField(column.name, text: Binding(
+                    get: {
+                        if case .string(let str) = value {
+                            return str
+                        }
+                        return ""
+                    },
+                    set: { value = .string($0) }
+                ))
+            }
         case .boolean:
-            Toggle(column.name, isOn: Binding(
-                get: {
-                    if case .boolean(let bool) = value {
-                        return bool
-                    }
-                    return false
-                },
-                set: { value = .boolean($0) }
-            ))
+            HStack {
+                Text(column.name)
+                    .font(.body)
+                    .foregroundColor(.grayPrimary)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: {
+                        if case .boolean(let bool) = value {
+                            return bool
+                        }
+                        return false
+                    },
+                    set: { value = .boolean($0) }
+                ))
+                .labelsHidden()
+            }
         }
     }
 }
@@ -338,62 +671,111 @@ struct AddColumnView: View {
     }
 }
 
-struct EditEntryView: View {
-    @Environment(\.dismiss) private var dismiss
+struct InlineEditEntryPanel: View {
     @EnvironmentObject private var viewModel: HabitViewModel
-    
     let entry: HabitEntry
+    var onSave: (HabitEntry) -> Void
+    var onCancel: () -> Void
+    @Binding var isMinimized: Bool
     @State private var category: HabitCategory
     @State private var notes: String
     @State private var customFields: [String: CustomFieldValue]
     @State private var date: Date
     @State private var showingDatePicker = false
-    
-    init(entry: HabitEntry) {
+
+    init(entry: HabitEntry, onSave: @escaping (HabitEntry) -> Void, onCancel: @escaping () -> Void, isMinimized: Binding<Bool>) {
         self.entry = entry
+        self.onSave = onSave
+        self.onCancel = onCancel
+        self._isMinimized = isMinimized
         _category = State(initialValue: entry.category)
         _notes = State(initialValue: entry.notes)
         _customFields = State(initialValue: entry.customFields)
         _date = State(initialValue: entry.date)
     }
-    
+
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Date & Time")) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Text("Edit entry")
+                    .font(.title)
+                    .bold()
+                Spacer()
+                Button(action: { isMinimized.toggle() }) {
+                    Image(systemName: isMinimized ? "chevron.down" : "chevron.up")
+                        .foregroundColor(.grayTertiary)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isMinimized.toggle()
+            }
+            if !isMinimized {
+                // Reason Picker (no header)
+                Menu {
+                    ForEach(viewModel.categories) { cat in
+                        Button(cat.name.capitalized) { category = cat }
+                    }
+                } label: {
                     HStack {
-                        Text(date, style: .date)
+                        Text(category.name.capitalized)
+                            .foregroundColor(.grayPrimary)
                         Spacer()
-                        Text(date, style: .time)
+                        Image(systemName: "chevron.down")
+                            .foregroundColor(.grayTertiary)
                     }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        showingDatePicker.toggle()
-                    }
-                    
-                    if showingDatePicker {
-                        DatePicker("", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                            .datePickerStyle(.graphical)
-                            .onChange(of: date) { _ in
-                                showingDatePicker = false
-                            }
-                    }
+                    .padding()
+                    .frame(height: 44)
+                    .background(Color.white)
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
                 }
-                
-                Section(header: Text("Category")) {
-                    Picker("Category", selection: $category) {
-                        ForEach(viewModel.categories) { category in
-                            Text(category.name).tag(category)
+                // Date & Time
+                HStack(spacing: 16) {
+                    Button(action: { showingDatePicker = true }) {
+                        HStack {
+                            Text(date, formatter: dateTimeFormatter)
+                                .foregroundColor(.grayPrimary)
+                            Spacer()
+                            Image(systemName: "calendar")
+                                .foregroundColor(.grayTertiary)
                         }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
                     }
                 }
-                
-                Section(header: Text("Notes")) {
-                    TextEditor(text: $notes)
-                        .frame(height: 100)
+                .sheet(isPresented: $showingDatePicker) {
+                    VStack {
+                        DatePicker("Select Date & Time", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                            .datePickerStyle(GraphicalDatePickerStyle())
+                            .labelsHidden()
+                        Button("Done") { showingDatePicker = false }
+                            .padding()
+                    }
+                    .presentationDetents([.medium])
                 }
-                
-                Section(header: Text("Custom Fields")) {
+                // Notes (with placeholder)
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $notes)
+                        .frame(height: 80)
+                        .padding(8)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+                        .foregroundColor(.grayPrimary)
+                    if notes.isEmpty {
+                        Text("Add additional notes")
+                            .foregroundColor(.grayTertiary)
+                            .font(.body)
+                            .padding(.leading, 14)
+                            .padding(.top, 10)
+                            .allowsHitTesting(false)
+                    }
+                }
+                // Custom Fields
+                if !viewModel.customColumns.isEmpty {
                     ForEach(viewModel.customColumns) { column in
                         CustomFieldInput(
                             column: column,
@@ -402,24 +784,69 @@ struct EditEntryView: View {
                                 set: { customFields[column.name] = $0 }
                             )
                         )
+                        .modifier(CustomFieldStyle())
                     }
                 }
-            }
-            .navigationTitle("Edit Entry")
-            .navigationBarItems(
-                leading: Button("Cancel") { dismiss() },
-                trailing: Button("Save") {
-                    let updatedEntry = HabitEntry(
-                        id: entry.id,
-                        date: date,
-                        category: category,
-                        notes: notes,
-                        customFields: customFields
-                    )
-                    viewModel.updateEntry(updatedEntry)
-                    dismiss()
+                // Cancel/Save Buttons
+                HStack {
+                    Button(action: { onCancel() }) {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.white)
+                            .foregroundColor(.grayPrimary)
+                            .cornerRadius(10)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.grayBorder))
+                    }
+                    Button(action: {
+                        let updatedEntry = HabitEntry(
+                            id: entry.id,
+                            date: date,
+                            category: category,
+                            notes: notes,
+                            customFields: customFields
+                        )
+                        onSave(updatedEntry)
+                    }) {
+                        HStack {
+                            Image(systemName: "checkmark")
+                            Text("Update")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.primaryBlue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                    }
                 }
-            )
+                .padding(.top, 8)
+            }
         }
+        .padding(24)
+        .background(Color.grayCardBg)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+        .padding(.horizontal)
+    }
+}
+
+// Custom modifier for custom field style
+struct CustomFieldStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.vertical, 10)
+            .padding(.horizontal, 16)
+            .background(Color.white)
+            .cornerRadius(8)
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+            .padding(.vertical, 4)
+    }
+}
+
+extension Calendar {
+    func startOfWeek(for date: Date) -> Date {
+        let components = dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
+        return self.date(from: components) ?? date
     }
 } 

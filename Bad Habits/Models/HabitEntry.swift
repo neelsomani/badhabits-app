@@ -12,14 +12,15 @@ struct HabitCategory: Identifiable, Codable, Hashable {
     }
     
     static let defaultCategories: [HabitCategory] = [
-        HabitCategory(name: "RELAX"),
-        HabitCategory(name: "REWARD"),
-        HabitCategory(name: "FOCUS"),
-        HabitCategory(name: "HUMAN NEED")
+        HabitCategory(name: "Relax"),
+        HabitCategory(name: "Reward"),
+        HabitCategory(name: "Focus"),
+        HabitCategory(name: "Human Need"),
+        HabitCategory(name: "Fun")
     ]
 }
 
-struct HabitEntry: Identifiable, Codable {
+struct HabitEntry: Identifiable, Codable, Equatable {
     let id: UUID
     let date: Date
     let category: HabitCategory
@@ -43,6 +44,16 @@ enum CustomFieldValue: Codable {
         switch self {
         case .string(let value): return value
         case .boolean(let value): return value ? "Yes" : "No"
+        }
+    }
+}
+
+extension CustomFieldValue: Equatable {
+    static func == (lhs: CustomFieldValue, rhs: CustomFieldValue) -> Bool {
+        switch (lhs, rhs) {
+        case let (.string(a), .string(b)): return a == b
+        case let (.boolean(a), .boolean(b)): return a == b
+        default: return false
         }
     }
 } 

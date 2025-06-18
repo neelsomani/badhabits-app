@@ -12,7 +12,7 @@ struct MetricsView: View {
                         Text("Events")
                         Spacer()
                         Text("\(viewModel.eventsThisWeek())")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.graySecondary)
                     }
                 }
                 
@@ -21,7 +21,7 @@ struct MetricsView: View {
                         Text("Events")
                         Spacer()
                         Text("\(viewModel.eventsThisMonth())")
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color.graySecondary)
                     }
                 }
                 
@@ -38,12 +38,32 @@ struct MetricsView: View {
                 }
                 
                 Section(header: Text("AI Analysis")) {
-                    HStack {
-                        Text("Weekly Analysis")
-                        Spacer()
-                        Text("Unlock")
-                            .foregroundColor(.secondary)
+                    VStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "lock")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color.grayTertiary)
+                        Text("AI Analysis Locked")
+                            .font(.headline)
+                            .foregroundColor(.grayPrimary)
+                        Text("Get personalized insights about your habit patterns with AI analysis")
+                            .font(.subheadline)
+                            .foregroundColor(Color.graySecondary)
+                            .multilineTextAlignment(.center)
+                        Button(action: {/* unlock premium action */}) {
+                            Text("Unlock Premium")
+                                .fontWeight(.semibold)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.primaryBlue)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
+                        }
+                        .padding(.top, 4)
                     }
+                    .padding(4)
+                    .background(Color.grayCardBg)
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.grayBorder))
                 }
             }
             .navigationTitle("Metrics")

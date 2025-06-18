@@ -15,14 +15,21 @@ struct ContentView: View {
         TabView {
             HabitEntriesView()
                 .tabItem {
-                    Label("Entries", systemImage: "list.bullet")
+                    Image(systemName: "plus")
+                    Text("Track")
                 }
-            
             MetricsView()
                 .tabItem {
-                    Label("Metrics", systemImage: "chart.bar")
+                    Image(systemName: "chart.bar")
+                    Text("Metrics")
+                }
+            SettingsView(showingAddColumn: .constant(false), showingAddCategory: .constant(false))
+                .tabItem {
+                    Image(systemName: "gearshape")
+                    Text("Settings")
                 }
         }
+        .accentColor(Color.primaryBlue)
         .environmentObject(viewModel)
     }
 }
