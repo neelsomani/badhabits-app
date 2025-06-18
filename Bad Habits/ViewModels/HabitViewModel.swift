@@ -94,6 +94,43 @@ class HabitViewModel: ObservableObject {
         
         return result
     }
+
+    // Monthly events over the past year
+    func monthlyEventsOverYear() -> [(Date, Int)] {
+        let calendar = Calendar.current
+        let today = Date()
+        let oneYearAgo = calendar.date(byAdding: .year, value: -1, to: today)!
+        var result: [(Date, Int)] = []
+        var currentDate = oneYearAgo
+        while currentDate <= today {
+            let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: currentDate))!
+            let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+            let count = entries.filter { $0.date >= monthStart && $0.date < monthEnd }.count
+            result.append((monthStart, count))
+            currentDate = calendar.date(byAdding: .month, value: 1, to: currentDate)!
+        }
+        return result
+    }
+
+    // Reason breakdown for this week
+    func reasonBreakdownThisWeek() -> [(String, Int)] {
+        let calendar = Calendar.current
+        let today = Date()
+        let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
+        let weekEntries = entries.filter { $0.date >= startOfWeek }
+        let grouped = Dictionary(grouping: weekEntries, by: { $0.category.name.capitalized })
+        return grouped.map { (key, value) in (key, value.count) }.sorted { $0.0 < $1.0 }
+    }
+
+    // Reason breakdown for this month
+    func reasonBreakdownThisMonth() -> [(String, Int)] {
+        let calendar = Calendar.current
+        let today = Date()
+        let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: today))!
+        let monthEntries = entries.filter { $0.date >= startOfMonth }
+        let grouped = Dictionary(grouping: monthEntries, by: { $0.category.name.capitalized })
+        return grouped.map { (key, value) in (key, value.count) }.sorted { $0.0 < $1.0 }
+    }
     
     // MARK: - Persistence
     
