@@ -9,6 +9,7 @@ struct HabitEntriesView: View {
     @Namespace private var scrollNamespace // For scrolling
     @State private var isPanelMinimized = false
     @State private var currentWeekStart: Date = Calendar.current.startOfWeek(for: Date())
+    @State private var showingMetrics = false
 
     var body: some View {
         NavigationView {
@@ -169,6 +170,9 @@ struct HabitEntriesView: View {
                 }
                 .sheet(isPresented: $showingAddCategory) {
                     AddCategoryView()
+                }
+                .sheet(isPresented: $showingMetrics) {
+                    MetricsView()
                 }
             }
         }
@@ -455,7 +459,7 @@ private let modernDateFormatter: DateFormatter = {
 
 private let dateTimeFormatter: DateFormatter = {
     let formatter = DateFormatter()
-    formatter.dateStyle = .long
+    formatter.dateStyle = .short
     formatter.timeStyle = .short
     return formatter
 }()
@@ -464,6 +468,12 @@ private let isoDateTimeFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd 'at' h:mm a"
     formatter.locale = Locale.current
+    return formatter
+}()
+
+private let relativeDateFormatter: RelativeDateTimeFormatter = {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .abbreviated
     return formatter
 }()
 
@@ -483,24 +493,112 @@ struct SettingsView: View {
                 // Google Drive Sync Card
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(spacing: 12) {
-                        Image(systemName: "icloud.slash")
+                        Image(systemName: viewModel.googleDriveService.isAuthenticated ? "icloud" : "icloud.slash")
                             .font(.system(size: 32, weight: .regular))
-                            .foregroundColor(.grayTertiary)
+                            .foregroundColor(viewModel.googleDriveService.isAuthenticated ? .green : .grayTertiary)
                         Text("Google Drive Sync")
                             .font(.system(size: 28, weight: .bold))
                             .foregroundColor(.grayPrimary)
                     }
-                    Text("Connect Google Drive to sync your data across devices.")
+                    Text(viewModel.googleDriveService.isAuthenticated ? 
+                         "Connected to Google Drive. Data syncs automatically." :
+                         "Connect Google Drive to sync your data automatically.")
                         .font(.body)
                         .foregroundColor(.graySecondary)
-                    Button(action: {/* Connect Google Drive */}) {
-                        Text("Connect Google Drive")
+                    
+                    // Note about Google Sheets
+                    if viewModel.googleDriveService.isAuthenticated {
+                        Text("Note: Data is stored as a Google Sheet called Bad Habits Data.")
+                            .font(.caption)
+                            .foregroundColor(.grayTertiary)
+                            .padding(.top, 4)
+                    }
+                    
+                    // Last Synced information
+                    if viewModel.googleDriveService.isAuthenticated, let lastSynced = viewModel.googleDriveService.lastSynced {
+                        HStack {
+                            Image(systemName: "clock")
+                                .foregroundColor(.grayTertiary)
+                            Text("Last synced: \(lastSynced, formatter: dateTimeFormatter)")
+                                .font(.caption)
+                                .foregroundColor(.graySecondary)
+                        }
+                    }
+                    
+                    if viewModel.googleDriveService.isAuthenticated {
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                viewModel.syncWithGoogleDrive()
+                            }) {
+                                HStack {
+                                    if viewModel.googleDriveService.isSyncing {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .foregroundColor(.white)
+                                    } else {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                    }
+                                    Text(viewModel.googleDriveService.isSyncing ? "Syncing..." : "Sync Now")
+                                }
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.primaryBlue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(viewModel.googleDriveService.isSyncing)
+                            
+                            Button(action: {
+                                viewModel.signOutFromGoogleDrive()
+                            }) {
+                                Text("Disconnect Google Drive")
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.red.opacity(0.1))
+                                    .foregroundColor(.red)
+                                    .cornerRadius(12)
+                            }
+                            .disabled(viewModel.googleDriveService.isSyncing)
+                        }
+                    } else {
+                        Button(action: {
+                            viewModel.signInToGoogleDrive()
+                        }) {
+                            HStack {
+                                if viewModel.googleDriveService.isSyncing {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                        .foregroundColor(.white)
+                                } else {
+                                    Image(systemName: "person.crop.circle.badge.plus")
+                                }
+                                Text(viewModel.googleDriveService.isSyncing ? "Connecting..." : "Connect Google Drive")
+                            }
                             .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.primaryBlue)
                             .foregroundColor(.white)
                             .cornerRadius(12)
+                        }
+                        .disabled(viewModel.googleDriveService.isSyncing)
+                    }
+                    
+                    // Error message
+                    if let error = viewModel.googleDriveService.errorMessage {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
                     }
                 }
                 .padding(24)
@@ -669,10 +767,7 @@ struct SettingsView: View {
                         title: Text("Delete All Data?"),
                         message: Text("This cannot be undone. Are you sure?"),
                         primaryButton: .destructive(Text("Delete")) {
-                            viewModel.entries.removeAll()
-                            viewModel.categories = HabitCategory.defaultCategories
-                            viewModel.customColumns.removeAll()
-                            viewModel.habitName = ""
+                            viewModel.clearAllData()
                         },
                         secondaryButton: .cancel()
                     )

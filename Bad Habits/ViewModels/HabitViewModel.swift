@@ -1,59 +1,161 @@
 import Foundation
 import SwiftUI
+import Combine
 
 class HabitViewModel: ObservableObject {
     @Published var entries: [HabitEntry] = []
     @Published var customColumns: [CustomColumn] = []
     @Published var categories: [HabitCategory] = HabitCategory.defaultCategories
-    @Published var habitName: String = ""
+    
+    // Google Drive service
+    let googleDriveService: GoogleDriveService
     
     private let entriesKey = "habitEntries"
     private let columnsKey = "customColumns"
     private let categoriesKey = "customCategories"
-    private let habitNameKey = "habitName"
+    
+    private var cancellables: Set<AnyCancellable> = []
     
     init() {
+        self.googleDriveService = GoogleDriveService()
         loadData()
+        setupGoogleDriveSync()
+        
+        // Connect the service to this ViewModel
+        googleDriveService.setViewModel(self)
+        
+        // Observe changes to the Google Drive service
+        googleDriveService.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
+        }.store(in: &cancellables)
+    }
+    
+    deinit {
+        // Save to Google Drive when app closes
+        if googleDriveService.isAuthenticated {
+            googleDriveService.pushDataToDrive(entries: entries)
+        }
+    }
+    
+    // MARK: - Google Drive Sync
+    
+    private func setupGoogleDriveSync() {
+        // Listen for data updates from Google Drive
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleGoogleDriveUpdate),
+            name: .updateLocalData,
+            object: nil
+        )
+        
+        // Listen for authentication restoration
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAuthenticationRestored),
+            name: .authenticationRestored,
+            object: nil
+        )
+        
+        // Note: Authentication state will be restored asynchronously in GoogleDriveService.init()
+        // Data will be pulled automatically after successful authentication restoration
+    }
+    
+    @objc private func handleGoogleDriveUpdate(_ notification: Notification) {
+        if let remoteEntries = notification.object as? [HabitEntry] {
+            DispatchQueue.main.async {
+                self.entries = remoteEntries
+                self.saveData()
+            }
+        }
+    }
+    
+    @objc private func handleAuthenticationRestored(_ notification: Notification) {
+        // Authentication restored, data sync will begin automatically
+    }
+    
+    func signInToGoogleDrive() {
+        googleDriveService.signIn()
+    }
+    
+    func signOutFromGoogleDrive() {
+        googleDriveService.signOut()
+    }
+    
+    func syncWithGoogleDrive() {
+        googleDriveService.pullDataFromDrive()
+    }
+    
+    func pushToGoogleDrive() {
+        googleDriveService.pushDataToDrive(entries: entries)
+    }
+    
+    func clearGoogleDriveError() {
+        googleDriveService.clearError()
+    }
+    
+    // MARK: - Google Drive Bindings
+    
+    // MARK: - Data Sync Helpers
+    
+    func getLocalEntries() -> [HabitEntry] {
+        return entries
     }
     
     func addEntry(_ entry: HabitEntry) {
         entries.append(entry)
         saveData()
+        pushToGoogleDrive()
     }
     
     func updateEntry(_ entry: HabitEntry) {
         if let index = entries.firstIndex(where: { $0.id == entry.id }) {
             entries[index] = entry
             saveData()
+            pushToGoogleDrive()
         }
     }
     
     func deleteEntry(_ entry: HabitEntry) {
         entries.removeAll { $0.id == entry.id }
         saveData()
+        pushToGoogleDrive()
     }
     
     func addCustomColumn(name: String, type: CustomColumnType) {
         let column = CustomColumn(name: name, type: type)
         customColumns.append(column)
         saveData()
+        pushToGoogleDrive()
     }
     
     func addCategory(name: String) {
         let category = HabitCategory(name: name, isCustom: true)
         categories.append(category)
         saveData()
+        pushToGoogleDrive()
     }
     
     func deleteCategory(_ category: HabitCategory) {
         guard category.isCustom else { return }
         categories.removeAll { $0.id == category.id }
         saveData()
+        pushToGoogleDrive()
     }
     
-    func updateHabitName(_ name: String) {
-        habitName = name
-        saveData()
+    func clearAllData() {
+        entries.removeAll()
+        categories = HabitCategory.defaultCategories
+        customColumns.removeAll()
+        
+        // Clear persisted data
+        UserDefaults.standard.removeObject(forKey: entriesKey)
+        UserDefaults.standard.removeObject(forKey: columnsKey)
+        UserDefaults.standard.removeObject(forKey: categoriesKey)
+        
+        // Disconnect from Google Drive
+        signOutFromGoogleDrive()
     }
     
     // MARK: - Analytics
@@ -144,7 +246,6 @@ class HabitViewModel: ObservableObject {
         if let encoded = try? JSONEncoder().encode(categories) {
             UserDefaults.standard.set(encoded, forKey: categoriesKey)
         }
-        UserDefaults.standard.set(habitName, forKey: habitNameKey)
     }
     
     private func loadData() {
@@ -160,7 +261,6 @@ class HabitViewModel: ObservableObject {
            let decoded = try? JSONDecoder().decode([HabitCategory].self, from: data) {
             categories = decoded
         }
-        habitName = UserDefaults.standard.string(forKey: habitNameKey) ?? ""
     }
 }
 
