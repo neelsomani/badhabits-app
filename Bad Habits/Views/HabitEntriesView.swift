@@ -384,13 +384,27 @@ struct ModernHabitEntryCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(entry.customFields.keys.sorted()), id: \.self) { key in
                             if let value = entry.customFields[key] {
-                                HStack(spacing: 4) {
-                                    Text(key + ":")
-                                        .font(.caption)
-                                        .foregroundColor(.graySecondary)
-                                    Text(value.stringValue)
-                                        .font(.caption)
-                                        .foregroundColor(.grayPrimary)
+                                switch value {
+                                case .string(let str):
+                                    if !str.isEmpty {
+                                        HStack(spacing: 4) {
+                                            Text(key + ":")
+                                                .font(.caption)
+                                                .foregroundColor(.graySecondary)
+                                            Text(str)
+                                                .font(.caption)
+                                                .foregroundColor(.grayPrimary)
+                                        }
+                                    }
+                                case .boolean(let bool):
+                                    HStack(spacing: 4) {
+                                        Text(key + ":")
+                                            .font(.caption)
+                                            .foregroundColor(.graySecondary)
+                                        Text(bool ? "Yes" : "No")
+                                            .font(.caption)
+                                            .foregroundColor(.grayPrimary)
+                                    }
                                 }
                             }
                         }
@@ -454,49 +468,220 @@ private let isoDateTimeFormatter: DateFormatter = {
 }()
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var viewModel: HabitViewModel
     @Binding var showingAddColumn: Bool
     @Binding var showingAddCategory: Bool
-    @State private var habitName: String
     
-    init(showingAddColumn: Binding<Bool>, showingAddCategory: Binding<Bool>) {
-        self._showingAddColumn = showingAddColumn
-        self._showingAddCategory = showingAddCategory
-        self._habitName = State(initialValue: HabitViewModel().habitName)
-    }
+    @State private var newCategory: String = ""
+    @State private var newColumnName: String = ""
+    @State private var newColumnType: CustomColumnType = .string
+    @State private var showDeleteAlert = false
     
     var body: some View {
-        NavigationView {
-            List {
-                Section(header: Text("Habit Name")) {
-                    TextField("Enter habit name", text: $habitName)
-                        .onChange(of: habitName) { newValue in
-                            viewModel.updateHabitName(newValue)
-                        }
+        ScrollView {
+            VStack(spacing: 24) {
+                // Google Drive Sync Card
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "icloud.slash")
+                            .font(.system(size: 32, weight: .regular))
+                            .foregroundColor(.grayTertiary)
+                        Text("Google Drive Sync")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.grayPrimary)
+                    }
+                    Text("Connect Google Drive to sync your data across devices.")
+                        .font(.body)
+                        .foregroundColor(.graySecondary)
+                    Button(action: {/* Connect Google Drive */}) {
+                        Text("Connect Google Drive")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.primaryBlue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
                 }
+                .padding(24)
+                .background(Color.white)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                .padding(.horizontal)
                 
-                Section(header: Text("Customization")) {
-                    Button(action: { 
-                        showingAddCategory = true
-                    }) {
-                        Label("Manage Categories", systemImage: "tag")
-                            .foregroundColor(Color.grayTertiary)
-                            .font(.system(size: 20))
+                // Reason Options Card
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Reason Options")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.grayPrimary)
+                    HStack(spacing: 12) {
+                        TextField("Add new reason...", text: $newCategory)
+                            .padding(12)
+                            .background(Color.grayCardBg)
+                            .cornerRadius(8)
+                        Button(action: {
+                            let trimmed = newCategory.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty {
+                                viewModel.addCategory(name: trimmed)
+                                newCategory = ""
+                            }
+                        }) {
+                            Image(systemName: "plus")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .frame(width: 36, height: 36)
+                                .background(Color.primaryBlue)
+                                .cornerRadius(8)
+                        }
                     }
-                    
-                    Button(action: { 
-                        showingAddColumn = true
-                    }) {
-                        Label("Manage Custom Columns", systemImage: "plus.rectangle.on.rectangle")
-                            .foregroundColor(Color.grayTertiary)
-                            .font(.system(size: 20))
+                    VStack(spacing: 0) {
+                        ForEach(viewModel.categories) { cat in
+                            HStack {
+                                Text(cat.name)
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.grayPrimary)
+                                Spacer()
+                                if cat.isCustom {
+                                    Button(action: { viewModel.deleteCategory(cat) }) {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.errorRed)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 8)
+                            .background(Color.grayCardBg.opacity(0.5))
+                            .cornerRadius(6)
+                            .padding(.bottom, 2)
+                        }
                     }
+                }
+                .padding(24)
+                .background(Color.white)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                .padding(.horizontal)
+                
+                // Custom Columns Card
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Custom Columns")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.grayPrimary)
+                    TextField("Column name...", text: $newColumnName)
+                        .padding(12)
+                        .background(Color.grayCardBg)
+                        .cornerRadius(8)
+                    // Custom dropdown for type
+                    Menu {
+                        Button("Text") { newColumnType = .string }
+                        Button("Yes/No") { newColumnType = .boolean }
+                    } label: {
+                        HStack {
+                            Text(newColumnType == .string ? "Text" : "Yes/No")
+                                .foregroundColor(.primaryBlue)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .foregroundColor(.grayTertiary)
+                        }
+                        .padding()
+                        .frame(height: 44)
+                        .background(Color.white)
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+                    }
+                    Button(action: {
+                        let trimmed = newColumnName.trimmingCharacters(in: .whitespaces)
+                        if !trimmed.isEmpty {
+                            viewModel.addCustomColumn(name: trimmed, type: newColumnType)
+                            newColumnName = ""
+                            newColumnType = .string
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "plus")
+                            Text("Add Column")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.primaryBlue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    // List custom columns with delete button
+                    VStack(spacing: 0) {
+                        ForEach(viewModel.customColumns) { column in
+                            HStack {
+                                Text(column.name)
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(.grayPrimary)
+                                Spacer()
+                                Button(action: { viewModel.customColumns.removeAll { $0.id == column.id } }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.errorRed)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 8)
+                            .background(Color.grayCardBg.opacity(0.5))
+                            .cornerRadius(6)
+                            .padding(.bottom, 2)
+                        }
+                    }
+                }
+                .padding(24)
+                .background(Color.white)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                .padding(.horizontal)
+                
+                // Delete Account Card
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.errorRed)
+                        Text("Delete Account")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(.errorRed)
+                    }
+                    Text("This will permanently delete all your data including entries, categories, and custom columns. This action cannot be undone.")
+                        .font(.body)
+                        .foregroundColor(.grayPrimary)
+                    Button(action: { showDeleteAlert = true }) {
+                        Text("Delete All Data")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.errorRed)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                }
+                .padding(24)
+                .background(Color.errorRed.opacity(0.08))
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.errorRed.opacity(0.3)))
+                .padding(.horizontal)
+                .alert(isPresented: $showDeleteAlert) {
+                    Alert(
+                        title: Text("Delete All Data?"),
+                        message: Text("This cannot be undone. Are you sure?"),
+                        primaryButton: .destructive(Text("Delete")) {
+                            viewModel.entries.removeAll()
+                            viewModel.categories = HabitCategory.defaultCategories
+                            viewModel.customColumns.removeAll()
+                            viewModel.habitName = ""
+                        },
+                        secondaryButton: .cancel()
+                    )
                 }
             }
-            .navigationTitle("Settings")
-            .navigationBarItems(trailing: Button("Done") { dismiss() })
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
         }
+        .background(Color.grayLightBg.ignoresSafeArea())
     }
 }
 

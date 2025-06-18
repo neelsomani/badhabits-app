@@ -69,7 +69,7 @@ var body: some View {
                             .font(.headline)
                             .bold()
                         if credits == 0 {
-                            Text("Deposit credits to generate AI insights for your habits.")
+                            Text("Deposit credits to generate AI insights for your habits and earn rewards for improving.")
                                 .font(.body)
                                 .foregroundColor(.grayTertiary)
                         } else {
