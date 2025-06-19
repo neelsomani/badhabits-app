@@ -31,6 +31,7 @@ struct ContentView: View {
         }
         .accentColor(Color.primaryBlue)
         .environmentObject(viewModel)
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
