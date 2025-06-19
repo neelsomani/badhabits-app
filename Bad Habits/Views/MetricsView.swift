@@ -4,6 +4,8 @@ import Charts
 struct MetricsView: View {
     @EnvironmentObject private var viewModel: HabitViewModel
     @State private var period: Period = .weekly
+    @State private var tooltipData: (date: Date, count: Int)?
+    @State private var tooltipPosition: CGPoint = .zero
     
     enum Period: String, CaseIterable, Identifiable {
         case weekly = "Weekly"
@@ -192,6 +194,55 @@ struct MetricsView: View {
               }
             }
             .chartYScale(domain: 0...bufferedMax)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    let plotFrame = geo[proxy.plotAreaFrame]
+                    let barCount = max(chartData.count, 1)
+                    let barWidth = plotFrame.width / (CGFloat(barCount) * 1.5)
+                    let halfBarWidth = barWidth / 2
+                    ZStack {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .contentShape(Rectangle())
+                            .frame(width: plotFrame.width, height: plotFrame.height)
+                            .offset(x: plotFrame.minX, y: plotFrame.minY)
+                            .gesture(
+                                DragGesture(minimumDistance: 0)
+                                    .onChanged { value in
+                                        let xInPlot = value.location.x
+                                        guard proxy.value(atX: xInPlot, as: Date.self) != nil else {
+                                            tooltipData = nil
+                                            return
+                                        }
+                                        if let nearest = chartData.min(by: {
+                                            guard
+                                                let x0 = proxy.position(forX: $0.0),
+                                                let x1 = proxy.position(forX: $1.0)
+                                            else { return false }
+                                            let center0 = x0 + halfBarWidth
+                                            let center1 = x1 + halfBarWidth
+                                            return abs(center0 - xInPlot) < abs(center1 - xInPlot)
+                                        }) {
+                                            tooltipData = (date: nearest.0, count: nearest.1)
+                                            tooltipPosition = CGPoint(x: value.location.x + plotFrame.minX, y: value.location.y + plotFrame.minY)
+                                        }
+                                    }
+                                    .onEnded { _ in tooltipData = nil }
+                            )
+                        if let tip = tooltipData {
+                            VStack(spacing: 4) {
+                                Text("\(tip.count)").font(.headline).foregroundColor(.white)
+                                Text("events").font(.caption).foregroundColor(.white.opacity(0.8))
+                            }
+                            .padding(6)
+                            .background(Color.black.opacity(0.8))
+                            .cornerRadius(6)
+                            .position(x: tooltipPosition.x, y: tooltipPosition.y - 40)
+                        }
+                    }
+                    .frame(width: plotFrame.width, height: plotFrame.height)
+                }
+            }
             .frame(height: 200)
         }
         .padding(24)
@@ -227,3 +278,4 @@ struct MetricsView: View {
         .padding(.horizontal)
     }
 }
+
