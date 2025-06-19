@@ -16,5 +16,8 @@
 
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
+
+    <key>AIInsightsEnabled</key>
+    <false/>
 </dict>
 </plist>

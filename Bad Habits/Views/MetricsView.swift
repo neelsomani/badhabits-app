@@ -32,10 +32,12 @@ struct MetricsView: View {
         }
     }
     
-var body: some View {
+    var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                aiAnalysisCard
+                if HabitViewModel.isAIInsightsEnabled() {
+                    aiAnalysisCard
+                }
                 periodToggle
                 eventsCountCard
                 trendChartCard

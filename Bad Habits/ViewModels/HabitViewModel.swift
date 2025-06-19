@@ -16,6 +16,17 @@ class HabitViewModel: ObservableObject {
     
     private var cancellables: Set<AnyCancellable> = []
     
+    // MARK: - Feature Flags
+    
+    static func isAIInsightsEnabled() -> Bool {
+        guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path),
+              let aiInsightsEnabled = plist["AIInsightsEnabled"] as? Bool else {
+            return false // Default to false if not found
+        }
+        return aiInsightsEnabled
+    }
+    
     init() {
         self.googleDriveService = GoogleDriveService()
         loadData()
