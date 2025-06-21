@@ -6,6 +6,7 @@ struct MetricsView: View {
     @State private var period: Period = .weekly
     @State private var tooltipData: (date: Date, count: Int)?
     @State private var tooltipPosition: CGPoint = .zero
+    @State private var selectedDate: Date? = nil
     
     enum Period: String, CaseIterable, Identifiable {
         case weekly = "Weekly"
@@ -28,9 +29,20 @@ struct MetricsView: View {
     }
     
     var reasonBreakdown: [(String, Int)] {
-        switch period {
-        case .weekly: return viewModel.reasonBreakdownThisWeek()
-        case .monthly: return viewModel.reasonBreakdownThisMonth()
+        // If a date is selected from chart interaction, use that
+        if let selectedDate = selectedDate {
+            switch period {
+            case .weekly:
+                return viewModel.reasonBreakdownForWeek(weekStart: selectedDate)
+            case .monthly:
+                return viewModel.reasonBreakdownForMonth(monthStart: selectedDate)
+            }
+        } else {
+            // Otherwise use current week/month
+            switch period {
+            case .weekly: return viewModel.reasonBreakdownThisWeek()
+            case .monthly: return viewModel.reasonBreakdownThisMonth()
+            }
         }
     }
     
@@ -149,6 +161,10 @@ struct MetricsView: View {
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.grayBorder))
         .padding(.horizontal)
+        .onChange(of: period) { _ in
+            // Reset selected date when switching periods
+            selectedDate = nil
+        }
     }
 
     private var eventsCountCard: some View {
@@ -224,10 +240,13 @@ struct MetricsView: View {
                                             return abs(center0 - xInPlot) < abs(center1 - xInPlot)
                                         }) {
                                             tooltipData = (date: nearest.0, count: nearest.1)
+                                            selectedDate = nearest.0
                                             tooltipPosition = CGPoint(x: value.location.x + plotFrame.minX, y: value.location.y + plotFrame.minY)
                                         }
                                     }
-                                    .onEnded { _ in tooltipData = nil }
+                                    .onEnded { _ in 
+                                        tooltipData = nil
+                                    }
                             )
                         if let tip = tooltipData {
                             VStack(spacing: 4) {
@@ -254,9 +273,24 @@ struct MetricsView: View {
 
     private var reasonBreakdownCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Reason Breakdown")
-                .font(.headline)
-                .foregroundColor(.grayPrimary)
+            HStack {
+                Text("Reason Breakdown")
+                    .font(.headline)
+                    .foregroundColor(.grayPrimary)
+                Spacer()
+                if selectedDate != nil {
+                    Text("Tap to reset")
+                        .font(.caption2)
+                        .foregroundColor(.grayTertiary)
+                }
+            }
+            
+            // Always show date range - either selected date or current week/month
+            Text(formatDateRange(for: selectedDate ?? getCurrentPeriodStart()))
+                .font(.caption)
+                .foregroundColor(.graySecondary)
+                .padding(.bottom, 4)
+            
             ForEach(Array(reasonBreakdown.enumerated()), id: \.offset) { _, element in
                 let (reason, count) = element
                 HStack {
@@ -272,10 +306,41 @@ struct MetricsView: View {
             }
         }
         .padding(24)
-        .background(Color.white)
+        .background(selectedDate != nil ? Color.primaryBlue.opacity(0.02) : Color.white)
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
         .padding(.horizontal)
+        .onTapGesture {
+            // Reset to current week/month when tapped
+            selectedDate = nil
+        }
+    }
+    
+    // Helper function to format date range for display
+    private func formatDateRange(for date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        
+        switch period {
+        case .weekly:
+            let weekEnd = calendar.date(byAdding: .day, value: 6, to: date)!
+            return "\(formatter.string(from: date)) - \(formatter.string(from: weekEnd))"
+        case .monthly:
+            let monthEnd = calendar.date(byAdding: .month, value: 1, to: date)!
+            let monthEndAdjusted = calendar.date(byAdding: .day, value: -1, to: monthEnd)!
+            return "\(formatter.string(from: date)) - \(formatter.string(from: monthEndAdjusted))"
+        }
+    }
+    
+    private func getCurrentPeriodStart() -> Date {
+        let calendar = Calendar.current
+        switch period {
+        case .weekly:
+            return calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date()))!
+        case .monthly:
+            return calendar.date(from: calendar.dateComponents([.year, .month], from: Date()))!
+        }
     }
 }
 

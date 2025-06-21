@@ -10,6 +10,8 @@ struct HabitEntriesView: View {
     @State private var isPanelMinimized = false
     @State private var currentWeekStart: Date = Calendar.current.startOfWeek(for: Date())
     @State private var showingMetrics = false
+    @State private var scrollPosition: CGFloat = 0 // Track scroll position
+    @State private var shouldMaintainScrollPosition = false // Flag to maintain position
 
     var body: some View {
         NavigationView {
@@ -73,8 +75,41 @@ struct HabitEntriesView: View {
                                         let calendar = Calendar.current
                                         let today = Date()
                                         let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                        shouldMaintainScrollPosition = true
+                                        currentWeekStart = earliestWeekStart
+                                    }) {
+                                        Image(systemName: "chevron.left.2")
+                                            .font(.title2)
+                                            .foregroundColor({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                                return currentWeekStart > earliestWeekStart ? .primaryBlue : .grayTertiary
+                                            }())
+                                            .frame(width: 48, height: 48)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                                return currentWeekStart > earliestWeekStart ? Color.primaryBlue : Color.grayBorder
+                                            }(), lineWidth: 2))
+                                    }
+                                    .disabled({
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
+                                        return currentWeekStart <= earliestWeekStart
+                                    }())
+                                    
+                                    Button(action: {
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
                                         let prev = previousWeek(from: currentWeekStart)
                                         if prev >= earliestWeekStart {
+                                            shouldMaintainScrollPosition = true
                                             currentWeekStart = prev
                                         }
                                     }) {
@@ -102,16 +137,50 @@ struct HabitEntriesView: View {
                                         let earliestWeekStart = calendar.startOfWeek(for: calendar.date(byAdding: .year, value: -1, to: today)!)
                                         return currentWeekStart <= earliestWeekStart
                                     }())
+                                    
                                     Button(action: {
                                         let calendar = Calendar.current
                                         let today = Date()
                                         let latestWeekStart = calendar.startOfWeek(for: today)
                                         let next = nextWeek(from: currentWeekStart)
                                         if next <= latestWeekStart {
+                                            shouldMaintainScrollPosition = true
                                             currentWeekStart = next
                                         }
                                     }) {
                                         Image(systemName: "chevron.right")
+                                            .font(.title2)
+                                            .foregroundColor({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let latestWeekStart = calendar.startOfWeek(for: today)
+                                                return currentWeekStart < latestWeekStart ? .primaryBlue : .grayTertiary
+                                            }())
+                                            .frame(width: 48, height: 48)
+                                            .background(Color.white)
+                                            .clipShape(Circle())
+                                            .overlay(Circle().stroke({
+                                                let calendar = Calendar.current
+                                                let today = Date()
+                                                let latestWeekStart = calendar.startOfWeek(for: today)
+                                                return currentWeekStart < latestWeekStart ? Color.primaryBlue : Color.grayBorder
+                                            }(), lineWidth: 2))
+                                    }
+                                    .disabled({
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let latestWeekStart = calendar.startOfWeek(for: today)
+                                        return currentWeekStart >= latestWeekStart
+                                    }())
+                                    
+                                    Button(action: {
+                                        let calendar = Calendar.current
+                                        let today = Date()
+                                        let latestWeekStart = calendar.startOfWeek(for: today)
+                                        shouldMaintainScrollPosition = true
+                                        currentWeekStart = latestWeekStart
+                                    }) {
+                                        Image(systemName: "chevron.right.2")
                                             .font(.title2)
                                             .foregroundColor({
                                                 let calendar = Calendar.current
@@ -141,12 +210,19 @@ struct HabitEntriesView: View {
                                 .padding(.bottom, 4)
                                 .alignmentGuide(.bottom) { d in d[.bottom] }
                             }
+                            .id("entriesSection")
                             .padding(24)
                             .background(Color.white)
                             .cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
                             .padding(.horizontal)
                             Spacer(minLength: 24)
+                                .id("bottomSpacer")
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Dismiss keyboard when tapping on content
+                            hideKeyboard()
                         }
                     }
                     .onChange(of: entryToEdit) { newValue in
@@ -154,6 +230,17 @@ struct HabitEntriesView: View {
                             isPanelMinimized = false
                             withAnimation {
                                 proxy.scrollTo("editEntryPanel", anchor: .top)
+                            }
+                        }
+                    }
+                    .onChange(of: currentWeekStart) { newValue in
+                        if shouldMaintainScrollPosition {
+                            // Immediately scroll to bottom without any animation
+                            DispatchQueue.main.async {
+                                withAnimation(.none) {
+                                    proxy.scrollTo("bottomSpacer", anchor: .bottom)
+                                }
+                                shouldMaintainScrollPosition = false
                             }
                         }
                     }
@@ -199,7 +286,7 @@ struct HabitEntriesView: View {
         let calendar = Calendar.current
         let weekEnd = calendar.date(byAdding: .day, value: 6, to: weekStart)!
         let formatter = DateFormatter()
-        formatter.dateFormat = "M/dd"
+        formatter.dateFormat = "M/dd/yyyy"
         return "Week of \(formatter.string(from: weekStart))–\(formatter.string(from: weekEnd))"
     }
 
@@ -488,47 +575,85 @@ struct SettingsView: View {
     @State private var showDeleteAlert = false
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Google Drive Sync Card
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(spacing: 12) {
-                        Image(systemName: viewModel.googleDriveService.isAuthenticated ? "icloud" : "icloud.slash")
-                            .font(.system(size: 32, weight: .regular))
-                            .foregroundColor(viewModel.googleDriveService.isAuthenticated ? .green : .grayTertiary)
-                        Text("Google Drive Sync")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(.grayPrimary)
-                    }
-                    Text(viewModel.googleDriveService.isAuthenticated ? 
-                         "Connected to Google Drive. Data syncs automatically." :
-                         "Connect Google Drive to sync your data automatically.")
-                        .font(.body)
-                        .foregroundColor(.graySecondary)
-                    
-                    // Note about Google Sheets
-                    if viewModel.googleDriveService.isAuthenticated {
-                        Text("Note: Data is stored as a Google Sheet called Bad Habits Data.")
-                            .font(.caption)
-                            .foregroundColor(.grayTertiary)
-                            .padding(.top, 4)
-                    }
-                    
-                    // Last Synced information
-                    if viewModel.googleDriveService.isAuthenticated, let lastSynced = viewModel.googleDriveService.lastSynced {
-                        HStack {
-                            Image(systemName: "clock")
-                                .foregroundColor(.grayTertiary)
-                            Text("Last synced: \(lastSynced, formatter: dateTimeFormatter)")
-                                .font(.caption)
-                                .foregroundColor(.graySecondary)
+        ZStack {
+            Color.grayLightBg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Google Drive Sync Card
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack(spacing: 12) {
+                            Image(systemName: viewModel.googleDriveService.isAuthenticated ? "icloud" : "icloud.slash")
+                                .font(.system(size: 32, weight: .regular))
+                                .foregroundColor(viewModel.googleDriveService.isAuthenticated ? .green : .grayTertiary)
+                            Text("Google Drive Sync")
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundColor(.grayPrimary)
                         }
-                    }
-                    
-                    if viewModel.googleDriveService.isAuthenticated {
-                        VStack(spacing: 12) {
+                        Text(viewModel.googleDriveService.isAuthenticated ? 
+                             "Connected to Google Drive. Data syncs automatically." :
+                             "Connect Google Drive to sync your data automatically.")
+                            .font(.body)
+                            .foregroundColor(.graySecondary)
+                        
+                        // Note about Google Sheets
+                        if viewModel.googleDriveService.isAuthenticated {
+                            Text("Note: Data is stored as a Google Sheet called Bad Habits Data.")
+                                .font(.caption)
+                                .foregroundColor(.grayTertiary)
+                                .padding(.top, 4)
+                        }
+                        
+                        // Last Synced information
+                        if viewModel.googleDriveService.isAuthenticated, let lastSynced = viewModel.googleDriveService.lastSynced {
+                            HStack {
+                                Image(systemName: "clock")
+                                    .foregroundColor(.grayTertiary)
+                                Text("Last synced: \(lastSynced, formatter: dateTimeFormatter)")
+                                    .font(.caption)
+                                    .foregroundColor(.graySecondary)
+                            }
+                        }
+                        
+                        if viewModel.googleDriveService.isAuthenticated {
+                            VStack(spacing: 12) {
+                                Button(action: {
+                                    viewModel.syncWithGoogleDrive()
+                                }) {
+                                    HStack {
+                                        if viewModel.googleDriveService.isSyncing {
+                                            ProgressView()
+                                                .scaleEffect(0.8)
+                                                .foregroundColor(.white)
+                                        } else {
+                                            Image(systemName: "arrow.triangle.2.circlepath")
+                                        }
+                                        Text(viewModel.googleDriveService.isSyncing ? "Syncing..." : "Sync Now")
+                                    }
+                                    .fontWeight(.semibold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.primaryBlue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                                }
+                                .disabled(viewModel.googleDriveService.isSyncing)
+                                
+                                Button(action: {
+                                    viewModel.signOutFromGoogleDrive()
+                                }) {
+                                    Text("Disconnect Google Drive")
+                                        .fontWeight(.semibold)
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color.red.opacity(0.1))
+                                        .foregroundColor(.red)
+                                        .cornerRadius(12)
+                                }
+                                .disabled(viewModel.googleDriveService.isSyncing)
+                            }
+                        } else {
                             Button(action: {
-                                viewModel.syncWithGoogleDrive()
+                                viewModel.signInToGoogleDrive()
                             }) {
                                 HStack {
                                     if viewModel.googleDriveService.isSyncing {
@@ -536,9 +661,9 @@ struct SettingsView: View {
                                             .scaleEffect(0.8)
                                             .foregroundColor(.white)
                                     } else {
-                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                        Image(systemName: "person.crop.circle.badge.plus")
                                     }
-                                    Text(viewModel.googleDriveService.isSyncing ? "Syncing..." : "Sync Now")
+                                    Text(viewModel.googleDriveService.isSyncing ? "Connecting..." : "Connect Google Drive")
                                 }
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
@@ -548,235 +673,204 @@ struct SettingsView: View {
                                 .cornerRadius(12)
                             }
                             .disabled(viewModel.googleDriveService.isSyncing)
-                            
-                            Button(action: {
-                                viewModel.signOutFromGoogleDrive()
-                            }) {
-                                Text("Disconnect Google Drive")
-                                    .fontWeight(.semibold)
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.red.opacity(0.1))
-                                    .foregroundColor(.red)
-                                    .cornerRadius(12)
-                            }
-                            .disabled(viewModel.googleDriveService.isSyncing)
                         }
-                    } else {
+                        
+                        // Error message
+                        if let error = viewModel.googleDriveService.errorMessage {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.red)
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(8)
+                        }
+                    }
+                    .padding(24)
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                    .padding(.horizontal)
+                    
+                    // Reason Options Card
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Reason Options")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.grayPrimary)
+                        HStack(spacing: 12) {
+                            TextField("Add new reason...", text: $newCategory)
+                                .padding(12)
+                                .background(Color.grayCardBg)
+                                .cornerRadius(8)
+                            Button(action: {
+                                let trimmed = newCategory.trimmingCharacters(in: .whitespaces)
+                                if !trimmed.isEmpty {
+                                    viewModel.addCategory(name: trimmed)
+                                    newCategory = ""
+                                }
+                            }) {
+                                Image(systemName: "plus")
+                                    .font(.title3)
+                                    .foregroundColor(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.primaryBlue)
+                                    .cornerRadius(8)
+                            }
+                        }
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.categories) { cat in
+                                HStack {
+                                    Text(cat.name)
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(.grayPrimary)
+                                    Spacer()
+                                    if cat.isCustom {
+                                        Button(action: { viewModel.deleteCategory(cat) }) {
+                                            Image(systemName: "trash")
+                                                .foregroundColor(.errorRed)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    }
+                                }
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 8)
+                                .background(Color.grayCardBg.opacity(0.5))
+                                .cornerRadius(6)
+                                .padding(.bottom, 2)
+                            }
+                        }
+                    }
+                    .padding(24)
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                    .padding(.horizontal)
+                    
+                    // Custom Columns Card
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Custom Columns")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.grayPrimary)
+                        TextField("Column name...", text: $newColumnName)
+                            .padding(12)
+                            .background(Color.grayCardBg)
+                            .cornerRadius(8)
+                        // Custom dropdown for type
+                        Menu {
+                            Button("Text") { newColumnType = .string }
+                            Button("Yes/No") { newColumnType = .boolean }
+                        } label: {
+                            HStack {
+                                Text(newColumnType == .string ? "Text" : "Yes/No")
+                                    .foregroundColor(.primaryBlue)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .foregroundColor(.grayTertiary)
+                            }
+                            .padding()
+                            .frame(height: 44)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
+                        }
                         Button(action: {
-                            viewModel.signInToGoogleDrive()
+                            let trimmed = newColumnName.trimmingCharacters(in: .whitespaces)
+                            if !trimmed.isEmpty {
+                                viewModel.addCustomColumn(name: trimmed, type: newColumnType)
+                                newColumnName = ""
+                                newColumnType = .string
+                            }
                         }) {
                             HStack {
-                                if viewModel.googleDriveService.isSyncing {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                        .foregroundColor(.white)
-                                } else {
-                                    Image(systemName: "person.crop.circle.badge.plus")
-                                }
-                                Text(viewModel.googleDriveService.isSyncing ? "Connecting..." : "Connect Google Drive")
+                                Image(systemName: "plus")
+                                Text("Add Column")
+                                    .fontWeight(.semibold)
                             }
-                            .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.primaryBlue)
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
-                        .disabled(viewModel.googleDriveService.isSyncing)
-                    }
-                    
-                    // Error message
-                    if let error = viewModel.googleDriveService.errorMessage {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.red)
-                            Text(error)
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(8)
-                    }
-                }
-                .padding(24)
-                .background(Color.white)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
-                .padding(.horizontal)
-                
-                // Reason Options Card
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Reason Options")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.grayPrimary)
-                    HStack(spacing: 12) {
-                        TextField("Add new reason...", text: $newCategory)
-                            .padding(12)
-                            .background(Color.grayCardBg)
-                            .cornerRadius(8)
-                        Button(action: {
-                            let trimmed = newCategory.trimmingCharacters(in: .whitespaces)
-                            if !trimmed.isEmpty {
-                                viewModel.addCategory(name: trimmed)
-                                newCategory = ""
-                            }
-                        }) {
-                            Image(systemName: "plus")
-                                .font(.title3)
-                                .foregroundColor(.white)
-                                .frame(width: 36, height: 36)
-                                .background(Color.primaryBlue)
-                                .cornerRadius(8)
-                        }
-                    }
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.categories) { cat in
-                            HStack {
-                                Text(cat.name)
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(.grayPrimary)
-                                Spacer()
-                                if cat.isCustom {
-                                    Button(action: { viewModel.deleteCategory(cat) }) {
+                        // List custom columns with delete button
+                        VStack(spacing: 0) {
+                            ForEach(viewModel.customColumns) { column in
+                                HStack {
+                                    Text(column.name)
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundColor(.grayPrimary)
+                                    Spacer()
+                                    Button(action: { viewModel.customColumns.removeAll { $0.id == column.id } }) {
                                         Image(systemName: "trash")
                                             .foregroundColor(.errorRed)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
+                                .padding(.vertical, 14)
+                                .padding(.horizontal, 8)
+                                .background(Color.grayCardBg.opacity(0.5))
+                                .cornerRadius(6)
+                                .padding(.bottom, 2)
                             }
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 8)
-                            .background(Color.grayCardBg.opacity(0.5))
-                            .cornerRadius(6)
-                            .padding(.bottom, 2)
                         }
                     }
-                }
-                .padding(24)
-                .background(Color.white)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
-                .padding(.horizontal)
-                
-                // Custom Columns Card
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Custom Columns")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.grayPrimary)
-                    TextField("Column name...", text: $newColumnName)
-                        .padding(12)
-                        .background(Color.grayCardBg)
-                        .cornerRadius(8)
-                    // Custom dropdown for type
-                    Menu {
-                        Button("Text") { newColumnType = .string }
-                        Button("Yes/No") { newColumnType = .boolean }
-                    } label: {
-                        HStack {
-                            Text(newColumnType == .string ? "Text" : "Yes/No")
-                                .foregroundColor(.primaryBlue)
-                            Spacer()
-                            Image(systemName: "chevron.down")
-                                .foregroundColor(.grayTertiary)
+                    .padding(24)
+                    .background(Color.white)
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
+                    .padding(.horizontal)
+                    
+                    // Delete Account Card
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.errorRed)
+                            Text("Delete Account")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.errorRed)
                         }
-                        .padding()
-                        .frame(height: 44)
-                        .background(Color.white)
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.grayBorder))
-                    }
-                    Button(action: {
-                        let trimmed = newColumnName.trimmingCharacters(in: .whitespaces)
-                        if !trimmed.isEmpty {
-                            viewModel.addCustomColumn(name: trimmed, type: newColumnType)
-                            newColumnName = ""
-                            newColumnType = .string
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: "plus")
-                            Text("Add Column")
+                        Text("This will permanently delete all your data including entries, categories, and custom columns. This action cannot be undone.")
+                            .font(.body)
+                            .foregroundColor(.grayPrimary)
+                        Button(action: { showDeleteAlert = true }) {
+                            Text("Delete All Data")
                                 .fontWeight(.semibold)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.primaryBlue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                    }
-                    // List custom columns with delete button
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.customColumns) { column in
-                            HStack {
-                                Text(column.name)
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(.grayPrimary)
-                                Spacer()
-                                Button(action: { viewModel.customColumns.removeAll { $0.id == column.id } }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.errorRed)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                            .padding(.vertical, 14)
-                            .padding(.horizontal, 8)
-                            .background(Color.grayCardBg.opacity(0.5))
-                            .cornerRadius(6)
-                            .padding(.bottom, 2)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.errorRed)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
                         }
                     }
-                }
-                .padding(24)
-                .background(Color.white)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
-                .padding(.horizontal)
-                
-                // Delete Account Card
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.errorRed)
-                        Text("Delete Account")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundColor(.errorRed)
-                    }
-                    Text("This will permanently delete all your data including entries, categories, and custom columns. This action cannot be undone.")
-                        .font(.body)
-                        .foregroundColor(.grayPrimary)
-                    Button(action: { showDeleteAlert = true }) {
-                        Text("Delete All Data")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.errorRed)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                    .padding(24)
+                    .background(Color.errorRed.opacity(0.08))
+                    .cornerRadius(16)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.errorRed.opacity(0.3)))
+                    .padding(.horizontal)
+                    .alert(isPresented: $showDeleteAlert) {
+                        Alert(
+                            title: Text("Delete All Data?"),
+                            message: Text("This cannot be undone. Are you sure?"),
+                            primaryButton: .destructive(Text("Delete")) {
+                                viewModel.clearAllData()
+                            },
+                            secondaryButton: .cancel()
+                        )
                     }
                 }
-                .padding(24)
-                .background(Color.errorRed.opacity(0.08))
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.errorRed.opacity(0.3)))
-                .padding(.horizontal)
-                .alert(isPresented: $showDeleteAlert) {
-                    Alert(
-                        title: Text("Delete All Data?"),
-                        message: Text("This cannot be undone. Are you sure?"),
-                        primaryButton: .destructive(Text("Delete")) {
-                            viewModel.clearAllData()
-                        },
-                        secondaryButton: .cancel()
-                    )
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Dismiss keyboard when tapping on content
+                    hideKeyboard()
                 }
             }
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity)
         }
-        .background(Color.grayLightBg.ignoresSafeArea())
     }
 }
 
@@ -845,20 +939,26 @@ struct AddCategoryView: View {
     
     var body: some View {
         NavigationView {
-            Form {
-                Section(header: Text("Category Details")) {
-                    TextField("Category Name", text: $categoryName)
-                }
-                
-                Section(header: Text("Existing Categories")) {
-                    ForEach(viewModel.categories) { category in
-                        HStack {
-                            Text(category.name)
-                            if category.isCustom {
-                                Spacer()
-                                Button(action: { viewModel.deleteCategory(category) }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(Color.errorRed)
+            ZStack {
+                Color.grayLightBg.ignoresSafeArea()
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
+                Form {
+                    Section(header: Text("Category Details")) {
+                        TextField("Category Name", text: $categoryName)
+                    }
+                    
+                    Section(header: Text("Existing Categories")) {
+                        ForEach(viewModel.categories) { category in
+                            HStack {
+                                Text(category.name)
+                                if category.isCustom {
+                                    Spacer()
+                                    Button(action: { viewModel.deleteCategory(category) }) {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(Color.errorRed)
+                                    }
                                 }
                             }
                         }
@@ -929,12 +1029,18 @@ struct AddColumnView: View {
     
     var body: some View {
         NavigationView {
-            Form {
-                Section(header: Text("Column Details")) {
-                    TextField("Column Name", text: $columnName)
-                    Picker("Type", selection: $columnType) {
-                        Text("Text").tag(CustomColumnType.string)
-                        Text("Yes/No").tag(CustomColumnType.boolean)
+            ZStack {
+                Color.grayLightBg.ignoresSafeArea()
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
+                Form {
+                    Section(header: Text("Column Details")) {
+                        TextField("Column Name", text: $columnName)
+                        Picker("Type", selection: $columnType) {
+                            Text("Text").tag(CustomColumnType.string)
+                            Text("Yes/No").tag(CustomColumnType.boolean)
+                        }
                     }
                 }
             }
@@ -1129,4 +1235,9 @@ extension Calendar {
         let components = dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
         return self.date(from: components) ?? date
     }
+}
+
+// Helper function to hide keyboard
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 } 

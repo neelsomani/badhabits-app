@@ -245,6 +245,27 @@ class HabitViewModel: ObservableObject {
         return grouped.map { (key, value) in (key, value.count) }.sorted { $0.0 < $1.0 }
     }
     
+    // Reason breakdown for a specific date range
+    func reasonBreakdownForDateRange(startDate: Date, endDate: Date) -> [(String, Int)] {
+        let rangeEntries = entries.filter { $0.date >= startDate && $0.date < endDate }
+        let grouped = Dictionary(grouping: rangeEntries, by: { $0.category.name.capitalized })
+        return grouped.map { (key, value) in (key, value.count) }.sorted { $0.0 < $1.0 }
+    }
+    
+    // Reason breakdown for a specific week (given week start date)
+    func reasonBreakdownForWeek(weekStart: Date) -> [(String, Int)] {
+        let calendar = Calendar.current
+        let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart)!
+        return reasonBreakdownForDateRange(startDate: weekStart, endDate: weekEnd)
+    }
+    
+    // Reason breakdown for a specific month (given month start date)
+    func reasonBreakdownForMonth(monthStart: Date) -> [(String, Int)] {
+        let calendar = Calendar.current
+        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart)!
+        return reasonBreakdownForDateRange(startDate: monthStart, endDate: monthEnd)
+    }
+    
     // MARK: - Persistence
     
     private func saveData() {
