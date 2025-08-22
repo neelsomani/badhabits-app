@@ -448,6 +448,10 @@ struct AddEntryPanel: View {
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
         .padding(.horizontal)
+        .onAppear {
+            // Always update date to current time when panel appears
+            date = Date()
+        }
     }
 }
 
