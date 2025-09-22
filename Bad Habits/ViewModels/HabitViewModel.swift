@@ -187,6 +187,15 @@ class HabitViewModel: ObservableObject {
         return entries.filter { $0.date >= startOfMonth }.count
     }
     
+    func eventsTrailingDays(_ days: Int) -> Int {
+        guard days > 0 else { return 0 }
+        let calendar = Calendar.current
+        let today = Date()
+        let startOfDay = calendar.startOfDay(for: today)
+        guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: startOfDay) else { return 0 }
+        return entries.filter { $0.date >= startDate }.count
+    }
+    
     func weeklyEventsOverYear() -> [(Date, Int)] {
         let calendar = Calendar.current
         let today = Date()

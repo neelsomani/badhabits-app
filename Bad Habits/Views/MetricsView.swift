@@ -21,6 +21,14 @@ struct MetricsView: View {
         }
     }
     
+    var trailingSevenCount: Int {
+        viewModel.eventsTrailingDays(7)
+    }
+    
+    var trailingThirtyCount: Int {
+        viewModel.eventsTrailingDays(30)
+    }
+    
     var trendData: [(Date, Int)] {
         switch period {
         case .weekly: return viewModel.weeklyEventsOverYear()
@@ -53,7 +61,7 @@ struct MetricsView: View {
                     aiAnalysisCard
                 }
                 periodToggle
-                eventsCountCard
+                eventsSummaryRow
                 trendChartCard
                 reasonBreakdownCard
             }
@@ -167,6 +175,14 @@ struct MetricsView: View {
         }
     }
 
+    private var eventsSummaryRow: some View {
+        HStack(spacing: 16) {
+            eventsCountCard
+            trailingSummaryCard
+        }
+        .padding(.horizontal)
+    }
+
     private var eventsCountCard: some View {
         VStack(spacing: 8) {
             Image(systemName: "calendar")
@@ -184,7 +200,25 @@ struct MetricsView: View {
         .background(Color.white)
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
-        .padding(.horizontal)
+    }
+
+    private var trailingSummaryCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title2)
+                .foregroundColor(.primaryBlue)
+            Text("\(period == .weekly ? trailingSevenCount : trailingThirtyCount)")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundColor(.primaryBlue)
+            Text(period == .weekly ? "Last 7D" : "Last 30D")
+                .font(.headline)
+                .foregroundColor(.grayPrimary)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity)
+        .background(Color.white)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
     }
 
     private var trendChartCard: some View {
@@ -343,4 +377,3 @@ struct MetricsView: View {
         }
     }
 }
-
