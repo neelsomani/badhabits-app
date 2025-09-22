@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct HabitEntriesView: View {
     @EnvironmentObject private var viewModel: HabitViewModel
@@ -311,6 +312,9 @@ struct AddEntryPanel: View {
     @State private var showingDatePicker = false
     @Binding var isMinimized: Bool
     @State private var showReasonError = false
+    @State private var hasUserModifiedDate = false
+    @State private var isUpdatingFromTimer = false
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -370,7 +374,7 @@ struct AddEntryPanel: View {
                 }
                 .sheet(isPresented: $showingDatePicker) {
                     VStack {
-                        DatePicker("Select Date & Time", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        DatePicker("Select Date & Time", selection: userAwareDateBinding, displayedComponents: [.date, .hourAndMinute])
                             .datePickerStyle(GraphicalDatePickerStyle())
                             .labelsHidden()
                         Button("Done") { showingDatePicker = false }
@@ -426,6 +430,7 @@ struct AddEntryPanel: View {
                     notes = ""
                     customFields = [:]
                     date = Date()
+                    hasUserModifiedDate = false
                     category = nil
                     showReasonError = false
                 }) {
@@ -449,7 +454,19 @@ struct AddEntryPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
         .padding(.horizontal)
         .onAppear {
-            // Always update date to current time when panel appears
+            // Reset to "now" every time the panel shows so reopening always starts fresh
+            date = Date()
+            hasUserModifiedDate = false
+        }
+        .onReceive(timer) { current in
+            guard !hasUserModifiedDate, !showingDatePicker else { return }
+            isUpdatingFromTimer = true
+            date = current
+            isUpdatingFromTimer = false
+        }
+        .onChange(of: isMinimized) { minimized in
+            guard !minimized else { return }
+            hasUserModifiedDate = false
             date = Date()
         }
     }
@@ -1218,6 +1235,20 @@ struct InlineEditEntryPanel: View {
         .cornerRadius(16)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.grayBorder))
         .padding(.horizontal)
+    }
+}
+
+private extension AddEntryPanel {
+    var userAwareDateBinding: Binding<Date> {
+        Binding(
+            get: { date },
+            set: { newValue in
+                if !isUpdatingFromTimer {
+                    hasUserModifiedDate = true
+                }
+                date = newValue
+            }
+        )
     }
 }
 
